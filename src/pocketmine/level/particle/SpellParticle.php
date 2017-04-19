@@ -19,35 +19,23 @@
  *
 */
 
-namespace pocketmine\metadata;
+namespace pocketmine\level\particle;
 
-use pocketmine\plugin\Plugin;
+use pocketmine\math\Vector3;
+use pocketmine\network\protocol\LevelEventPacket;
 
-abstract class MetadataValue{
-	/** @var Plugin */
-	private $owningPlugin;
-
-	protected function __construct(Plugin $owningPlugin){
-		$this->owningPlugin = $owningPlugin;
+class SpellParticle extends GenericParticle{
+	public function __construct(Vector3 $pos, $r = 0, $g = 0, $b = 0, $a = 255){
+		parent::__construct($pos, LevelEventPacket::EVENT_PARTICLE_SPLASH, (($a & 0xff) << 24) | (($r & 0xff) << 16) | (($g & 0xff) << 8) | ($b & 0xff));
 	}
 
-	/**
-	 * @return Plugin
-	 */
-	public function getOwningPlugin(){
-		return $this->owningPlugin;
+	public function encode(){
+		$pk = new LevelEventPacket();
+		$pk->evid = LevelEventPacket::EVENT_PARTICLE_SPLASH;
+		$pk->x = $this->x;
+		$pk->y = $this->y;
+		$pk->z = $this->z;
+		$pk->data = $this->data;
+		return $pk;
 	}
-
-	/**
-	 * Fetches the value of this metadata item.
-	 *
-	 * @return mixed
-	 */
-	abstract public function value();
-
-	/**
-	 * Invalidates this metadata item, forcing it to recompute when next
-	 * accessed.
-	 */
-	abstract public function invalidate();
 }
