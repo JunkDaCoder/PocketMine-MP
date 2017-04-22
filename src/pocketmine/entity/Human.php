@@ -36,8 +36,7 @@ use pocketmine\nbt\tag\IntTag;
 use pocketmine\nbt\tag\ListTag;
 use pocketmine\nbt\tag\ShortTag;
 use pocketmine\nbt\tag\StringTag;
-use pocketmine\network\protocol\AddPlayerPacket;
-use pocketmine\network\protocol\RemoveEntityPacket;
+use pocketmine\network\mcpe\protocol\AddPlayerPacket;
 use pocketmine\Player;
 use pocketmine\utils\UUID;
 
@@ -102,6 +101,15 @@ class Human extends Creature implements ProjectileSource, InventoryHolder{
 	public function setSkin($str, $skinId){
 		$this->skin = $str;
 		$this->skinId = $skinId;
+	}
+
+	public function jump(){
+		parent::jump();
+		if($this->isSprinting()){
+			$this->exhaust(0.8, PlayerExhaustEvent::CAUSE_SPRINT_JUMPING);
+		}else{
+			$this->exhaust(0.2, PlayerExhaustEvent::CAUSE_JUMPING);
+		}
 	}
 
 	public function getFood() : float{
@@ -376,31 +384,35 @@ class Human extends Creature implements ProjectileSource, InventoryHolder{
 		if($this->isAlive()){
 			$food = $this->getFood();
 			$health = $this->getHealth();
-			if($food >= 18){
-				$this->foodTickTimer++;
-				if($this->foodTickTimer >= 80 and $health < $this->getMaxHealth()){
-					$this->heal(1, new EntityRegainHealthEvent($this, 1, EntityRegainHealthEvent::CAUSE_SATURATION));
-					$this->exhaust(3.0, PlayerExhaustEvent::CAUSE_HEALTH_REGEN);
-					$this->foodTickTimer = 0;
+			$difficulty = $this->server->getDifficulty();
 
+			$this->foodTickTimer++;
+			if($this->foodTickTimer >= 80){
+				$this->foodTickTimer = 0;
+			}
+
+			if($difficulty === 0 and $this->foodTickTimer % 10 === 0){ //Peaceful
+				if($food < 20){
+					$this->addFood(1.0);
 				}
-			}elseif($food === 0){
-				$this->foodTickTimer++;
-				if($this->foodTickTimer >= 80){
-					$diff = $this->server->getDifficulty();
-					$can = false;
-					if($diff === 1){
-						$can = $health > 10;
-					}elseif($diff === 2){
-						$can = $health > 1;
-					}elseif($diff === 3){
-						$can = true;
+				if($this->foodTickTimer % 20 === 0 and $health < $this->getMaxHealth()){
+					$this->heal(1, new EntityRegainHealthEvent($this, 1, EntityRegainHealthEvent::CAUSE_SATURATION));
+				}
+			}
+
+			if($this->foodTickTimer === 0){
+				if($food >= 18){
+					if($health < $this->getMaxHealth()){
+						$this->heal(1, new EntityRegainHealthEvent($this, 1, EntityRegainHealthEvent::CAUSE_SATURATION));
+						$this->exhaust(3.0, PlayerExhaustEvent::CAUSE_HEALTH_REGEN);
 					}
-					if($can){
+				}elseif($food <= 0){
+					if(($difficulty === 1 and $health > 10) or ($difficulty === 2 and $health > 1) or $difficulty === 3){
 						$this->attack(1, new EntityDamageEvent($this, EntityDamageEvent::CAUSE_STARVATION, 1));
 					}
 				}
 			}
+
 			if($food <= 6){
 				if($this->isSprinting()){
 					$this->setSprinting(false);
@@ -536,7 +548,7 @@ class Human extends Creature implements ProjectileSource, InventoryHolder{
 
 	public function close(){
 		if(!$this->closed){
-			if(!($this instanceof Player) or $this->loggedIn){
+			if($this->inventory !== null){
 				foreach($this->inventory->getViewers() as $viewer){
 					$viewer->removeWindow($this->inventory);
 				}
