@@ -231,8 +231,60 @@ class Human extends Creature implements ProjectileSource, InventoryHolder{
 		$this->attributeMap->getAttribute(Attribute::EXPERIENCE_LEVEL)->setValue($level);
 	}
 
+	public function takeXpLevel(int $level) : bool{
+		return $this->setXpLevel($this->getXpLevel() - $level);
+	}
+
+	public function addXpLevel(int $level) : bool{
+		return $this->setXpLevel($this->getXpLevel() + $level);
+	}
+
 	public function getXpProgress() : float{
 		return $this->attributeMap->getAttribute(Attribute::EXPERIENCE)->getValue();
+	}
+
+	public function setTotalXp(int $xp, bool $syncLevel = false) : bool{
+		$xp &= 0x7fffffff;
+		if($xp === $this->totalXp){
+			return false;
+		}
+		if(!$syncLevel){
+			$level = $this->getXpLevel();
+			$diff = $xp - $this->totalXp + $this->getFilledXp();
+			if($diff > 0){ //adding xp
+				while($diff > ($v = self::getTotalXpForLevel($level))){
+					$diff -= $v;
+					if(++$level >= 21863){
+						$diff = $v; //fill exp bar
+						break;
+					}
+				}
+			}else{ //taking xp
+				while($diff < ($v = self::getTotalXpForLevel($level - 1))){
+					$diff += $v;
+					if(--$level <= 0){
+						$diff = 0;
+						break;
+					}
+				}
+			}
+			$progress = ($diff / $v);
+		}else{
+			$values = self::getLevelFromXp($xp);
+			$level = $values[0];
+			$progress = $values[1];
+		}
+		$this->server->getPluginManager()->callEvent($ev = new PlayerExperienceChangeEvent($this, $level, $progress));
+		if(!$ev->isCancelled()){
+			$this->totalXp = $xp;
+			$this->setXpLevel($ev->getExpLevel());
+			$this->setXpProgress($ev->getProgress());
+			return true;
+		}
+		return false;
+	}
+	public function addXp(int $xp, bool $syncLevel = false) : bool{
+		return $this->setTotalXp($this->totalXp + $xp, $syncLevel);
 	}
 
 	public function setXpProgress(float $progress){
@@ -243,11 +295,6 @@ class Human extends Creature implements ProjectileSource, InventoryHolder{
 		return $this->totalXp;
 	}
 
-	public function setTotalXp($xp) : float{
-		$this->totalXp = $xp;
-		$this->recalculateXpProgress();
-	}
-
 	public function getRemainderXp() : int{
 		return $this->getTotalXp() - self::getTotalXpForLevel($this->getXpLevel());
 	}
@@ -256,6 +303,11 @@ class Human extends Creature implements ProjectileSource, InventoryHolder{
 		$this->setXpProgress($progress = $this->getRemainderXp() / self::getTotalXpForLevel($this->getXpLevel()));
 		return $progress;
 	}
+
+	public function getFilledXp() : int{
+		return self::getTotalXpForLevel($this->getXpLevel()) * $this->getXpProgress();
+	}
+
 
 	public static function getTotalXpForLevel(int $level) : int{
 		if($level <= 16){
